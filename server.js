@@ -3,6 +3,8 @@ const port  = '51001';
 // 棒読みちゃんのIPとポートを記載
 const bhost = '127.0.0.1';
 const bport = '50001';
+// その他
+const logName = 'chat.log';
 
 var util = require ('util'),
     url = require('url'),
@@ -25,6 +27,12 @@ http.createServer(function(req, res){
    }
 }).listen(port);
 function chat(req){
+    try {
+        odlChat = fs.readFileSync(logName, 'utf-8');
+    } catch (error) {
+        errorHandling(error);
+        return;
+    }
     var dd   = new Date(),
         hour = dd.getHours(),
         min  = dd.getMinutes(),
@@ -34,25 +42,28 @@ function chat(req){
         newChat = url_parts.query.text,
         newChatStr = decodeURIComponent(newChat),
         newChatAry = newChatStr.split(','),
-        logName = 'chat.log',
-        odlChat = fs.readFileSync(logName, 'utf-8'),
+        //odlChat = fs.readFileSync(logName, 'utf-8'),
         odlChatAry = odlChat.split(','),
         diffChatAry = lodash.difference(newChatAry, odlChatAry);
-    fs.writeFile(logName, newChatStr, (error) => {
-        console.log('[注意] ログの保存ができませんでした。\n${logName}を開いている場合は閉じてください。\n${logName}がない場合は作成してください。');
-    });
-    diffChatAry.reverse();
-    var replaceChatAry = [];
-    for(var i=0,j=diffChatAry.length;i<j;i++){
-        var targetText  = diffChatAry[i];
-        var replaceChat = replaceText(targetText);
-        replaceChatAry.push(replaceChat);
-    }
-    var replaceChatStr = replaceChatAry.join(','),
-        replaceChatStr_r = replaceChatStr.replace(/\d{1,2}\/\d{1,2}\s\d{1,2}:\d{1,2}\s/g, '');
-    bouyomiConnect.sendBouyomi(bouyomiServer, replaceChatStr_r);
     console.log(`--- 棒読みちゃん (${nowt}) ---`);
-    console.log(replaceChatStr_r);
+    fs.writeFile(logName, newChatStr, (error) => {
+        if(error){
+            errorHandling(error);
+            return;
+        } else {
+            diffChatAry.reverse();
+            var replaceChatAry = [];
+            for(var i=0,j=diffChatAry.length;i<j;i++){
+                var targetText  = diffChatAry[i];
+                var replaceChat = replaceText(targetText);
+                replaceChatAry.push(replaceChat);
+            }
+            var replaceChatStr = replaceChatAry.join(','),
+                replaceChatStr_r = replaceChatStr.replace(/\d{1,2}\/\d{1,2}\s\d{1,2}:\d{1,2}\s/g, '');
+            console.log(replaceChatStr_r);
+            bouyomiConnect.sendBouyomi(bouyomiServer, replaceChatStr_r);
+        }
+    });
 }
 function diffArray(arr1, arr2){
     var newArr = [];
@@ -76,4 +87,14 @@ function replaceText(a){
     }else{
         return a;
     }
+}
+function errorHandling(error){
+    var errorCode = error.code,
+        errorMess = (function(){
+        if(errorCode.match(/ENOENT/)) return `${logName}がない場合は作成してください。`;
+        if(errorCode.match(/EPERM|EBUSY/)) return `${logName}を開いている場合は閉じてください。`;
+    })();
+    var errorText = `[注意] ログの保存ができませんでした。${errorMess}`;
+    console.log(errorText);
+    bouyomiConnect.sendBouyomi(bouyomiServer, errorText);
 }
